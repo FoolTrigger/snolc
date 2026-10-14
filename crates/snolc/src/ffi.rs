@@ -12,7 +12,7 @@ static STOP_HANDLE: Mutex<Option<EngineHandle>> = Mutex::new(None);
 
 #[cfg(target_os = "android")]
 #[link(name = "log")]
-extern "C" {
+unsafe extern "C" {
     fn __android_log_write(prio: i32, tag: *const c_char, text: *const c_char) -> i32;
 }
 
@@ -51,7 +51,7 @@ impl Host for NativeHost {
     }
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn snolc_engine_start(
     config_path: *const c_char,
     protect_cb: Option<ProtectCallback>,
@@ -125,7 +125,7 @@ pub unsafe extern "C" fn snolc_engine_start(
     }
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn snolc_engine_stop() {
     log_msg(4, "snolc_engine_stop: requesting shutdown");
     if let Ok(mut lock) = STOP_HANDLE.lock() {

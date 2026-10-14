@@ -943,10 +943,12 @@ fn channel_security_context(module: &LoadedModule, role: Role) -> Result<Vec<u8>
 
 impl TunnelRuntime {
     fn is_idle(&self) -> bool {
+        if self.retry_at.is_some() {
+            return true;
+        }
         match &self.state {
             TunnelState::Established(session) => session.is_idle(self.binding.role),
             TunnelState::Carrier => self.binding.role == Role::Server,
-            TunnelState::Retry => true,
             _ => false,
         }
     }
