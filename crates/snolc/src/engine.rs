@@ -557,7 +557,7 @@ impl Engine {
             self.drain_module_events();
             self.drain_log_errors();
             if self.idle_wait && tunnels.iter().all(TunnelRuntime::is_idle) {
-                std::thread::sleep(Duration::from_micros(25));
+                std::thread::sleep(Duration::from_millis(1));
             }
         }
 
@@ -945,6 +945,8 @@ impl TunnelRuntime {
     fn is_idle(&self) -> bool {
         match &self.state {
             TunnelState::Established(session) => session.is_idle(self.binding.role),
+            TunnelState::Carrier => self.binding.role == Role::Server,
+            TunnelState::Retry => true,
             _ => false,
         }
     }

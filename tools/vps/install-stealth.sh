@@ -60,7 +60,7 @@ mkdir -p "$BUILD_DIR"
 log "===> 4. Сборка ядра snolc..."
 cd "$BUILD_DIR"
 if [ ! -d "snolc" ]; then
-    git clone --depth 1 https://github.com/owenewans/snolc.git
+    git clone --depth 1 https://github.com/fooltrigger/snolc.git
 fi
 cd snolc
 cargo build --release --locked -p snolc-cli

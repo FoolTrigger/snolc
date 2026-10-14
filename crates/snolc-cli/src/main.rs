@@ -77,7 +77,7 @@ fn run_engine(path: &Path) -> Result<(), String> {
                 let result = build_engine(&path);
                 match result {
                     Ok((mut engine, handle)) => {
-                        engine.set_idle_wait(index != 0);
+                        engine.set_idle_wait(true);
                         let _ = ready_tx.send(Ok(handle.clone()));
                         if cancelled_worker.load(Ordering::Acquire) {
                             let _ = handle.shutdown();
@@ -155,7 +155,8 @@ fn run_engine(path: &Path) -> Result<(), String> {
 }
 
 fn run_single_engine(path: &Path) -> Result<(), String> {
-    let (engine, handle) = build_engine(path)?;
+    let (mut engine, handle) = build_engine(path)?;
+    engine.set_idle_wait(true);
     let shutdown = handle.clone();
     ctrlc::set_handler(move || {
         let _ = shutdown.shutdown();
