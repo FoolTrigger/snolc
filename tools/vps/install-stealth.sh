@@ -55,13 +55,13 @@ fi
 ok "Rust готов."
 
 BUILD_DIR="/tmp/snolc-build-$$"
+rm -rf "$BUILD_DIR"
 mkdir -p "$BUILD_DIR"
 
 log "===> 4. Сборка ядра snolc..."
 cd "$BUILD_DIR"
-if [ ! -d "snolc" ]; then
-    git clone --depth 1 https://github.com/fooltrigger/snolc.git
-fi
+rm -rf snolc
+git clone --depth 1 https://github.com/fooltrigger/snolc.git snolc
 cd snolc
 cargo build --release --locked -p snolc-cli
 cp target/release/snolc "$INSTALL_DIR/bin/"
