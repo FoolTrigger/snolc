@@ -11,6 +11,7 @@ pub mod logging;
 pub mod module_config;
 pub mod mux;
 pub mod stack;
+pub mod ffi;
 pub mod wire;
 
 pub use deployment::{Deployment, DeploymentError};

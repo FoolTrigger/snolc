@@ -89,6 +89,7 @@ fn merge_class(
     }
 }
 
+#[allow(dead_code)]
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct PackageLock {
@@ -101,6 +102,7 @@ struct PackageLock {
     dependencies: Vec<LockedDependency>,
 }
 
+#[allow(dead_code)]
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct LockedDependency {
@@ -110,38 +112,54 @@ struct LockedDependency {
 }
 
 fn resolve_library(packages: &Path, package: &PackageIdentity) -> Result<PathBuf, DeploymentError> {
-    let root = packages.canonicalize()?;
-    let lock_path = root
-        .join("locks")
-        .join(&package.owner)
-        .join(&package.name)
-        .join(format!("{}.toml", package.version));
-    let lock: PackageLock = toml::from_str(&fs::read_to_string(&lock_path)?)?;
-    if lock.wire_version != crate::WIRE_VERSION
-        || lock.package != *package
-        || lock.target.is_empty()
-        || lock.store.as_os_str().is_empty()
-        || lock.content_sha256.len() != 64
-        || lock.dependencies.iter().any(|dependency| {
-            dependency.package.is_empty()
-                || dependency.version.is_empty()
-                || dependency.content_sha256.len() != 64
-        })
+    #[cfg(target_os = "android")]
     {
-        return Err(DeploymentError::PackageLock(lock_path));
+        let _ = packages;
+        let soname = match package.name.as_str() {
+            "adapter-tun" => "libsnolc_adapter_tun.so",
+            "carrier-tcp" => "libsnolc_carrier_tcp.so",
+            "protection-noise" => "libsnolc_protection_noise.so",
+            "policy-local" => "libsnolc_policy_local.so",
+            _ => return Err(DeploymentError::PackageEscape),
+        };
+        return Ok(PathBuf::from(soname));
     }
-    let lock_directory = lock_path.parent().ok_or(DeploymentError::PackageLockPath)?;
-    let library = lock_directory.join(lock.library).canonicalize()?;
-    let store = lock_directory.join(lock.store).canonicalize()?;
-    if !library.starts_with(&root) || !store.starts_with(&root) || !library.starts_with(&store) {
-        return Err(DeploymentError::PackageEscape);
+    #[cfg(not(target_os = "android"))]
+    {
+        let root = packages.canonicalize()?;
+        let lock_path = root
+            .join("locks")
+            .join(&package.owner)
+            .join(&package.name)
+            .join(format!("{}.toml", package.version));
+        let lock: PackageLock = toml::from_str(&fs::read_to_string(&lock_path)?)?;
+        if lock.wire_version != crate::WIRE_VERSION
+            || lock.package != *package
+            || lock.target.is_empty()
+            || lock.store.as_os_str().is_empty()
+            || lock.content_sha256.len() != 64
+            || lock.dependencies.iter().any(|dependency| {
+                dependency.package.is_empty()
+                    || dependency.version.is_empty()
+                    || dependency.content_sha256.len() != 64
+            })
+        {
+            return Err(DeploymentError::PackageLock(lock_path));
+        }
+        let lock_directory = lock_path.parent().ok_or(DeploymentError::PackageLockPath)?;
+        let library = lock_directory.join(lock.library).canonicalize()?;
+        let store = lock_directory.join(lock.store).canonicalize()?;
+        if !library.starts_with(&root) || !store.starts_with(&root) || !library.starts_with(&store) {
+            return Err(DeploymentError::PackageEscape);
+        }
+        if hash_file(&library)? != lock.content_sha256.to_ascii_lowercase() {
+            return Err(DeploymentError::PackageHash(library));
+        }
+        Ok(library)
     }
-    if hash_file(&library)? != lock.content_sha256.to_ascii_lowercase() {
-        return Err(DeploymentError::PackageHash(library));
-    }
-    Ok(library)
 }
 
+#[allow(dead_code)]
 fn hash_file(path: &Path) -> Result<String, io::Error> {
     let mut input = File::open(path)?;
     let mut hasher = Sha256::new();

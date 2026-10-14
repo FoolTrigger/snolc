@@ -9,4 +9,5 @@ find_library(log-lib log)
 
 target_link_libraries(snolc_android
     ${log-lib}
+    dl
 )

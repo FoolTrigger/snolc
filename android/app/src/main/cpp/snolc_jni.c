@@ -3,6 +3,7 @@
 #include <stdint.h>
 #include <unistd.h>
 #include <pthread.h>
+#include <dlfcn.h>
 
 #define TAG "snolc-jni"
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO, TAG, __VA_ARGS__)
@@ -11,6 +12,32 @@
 static JavaVM *g_jvm = NULL;
 static jobject g_service_obj = NULL;
 static int g_running = 0;
+
+typedef int (*snolc_engine_start_fn)(const char *config_path, int (*protect_cb)(int));
+typedef void (*snolc_engine_stop_fn)(void);
+
+static void *g_libsnolc = NULL;
+static snolc_engine_start_fn g_start_fn = NULL;
+static snolc_engine_stop_fn g_stop_fn = NULL;
+
+static int load_snolc_library(void) {
+    if (g_libsnolc && g_start_fn && g_stop_fn) {
+        return 1;
+    }
+    g_libsnolc = dlopen("libsnolc.so", RTLD_NOW | RTLD_GLOBAL);
+    if (!g_libsnolc) {
+        LOGE("load_snolc_library: dlopen(libsnolc.so) failed: %s", dlerror());
+        return 0;
+    }
+    g_start_fn = (snolc_engine_start_fn)dlsym(g_libsnolc, "snolc_engine_start");
+    g_stop_fn = (snolc_engine_stop_fn)dlsym(g_libsnolc, "snolc_engine_stop");
+    if (!g_start_fn || !g_stop_fn) {
+        LOGE("load_snolc_library: dlsym failed: start=%p, stop=%p", g_start_fn, g_stop_fn);
+        return 0;
+    }
+    LOGI("load_snolc_library: successfully loaded libsnolc.so");
+    return 1;
+}
 
 JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM *vm, void *reserved) {
     g_jvm = vm;
@@ -60,7 +87,7 @@ Java_org_owenewans_snolc_SnolcVpnService_startEngine(
     JNIEnv *env,
     jobject thiz,
     jint tun_fd,
-    jstring config_toml
+    jstring config_path
 ) {
     LOGI("startEngine: starting with TUN FD = %d", tun_fd);
 
@@ -70,18 +97,22 @@ Java_org_owenewans_snolc_SnolcVpnService_startEngine(
     g_service_obj = (*env)->NewGlobalRef(env, thiz);
     g_running = 1;
 
-    const char *config_str = (*env)->GetStringUTFChars(env, config_toml, NULL);
-    LOGI("startEngine: config loaded successfully");
-
-    // Имитация детекции работы петли событий userspace стека smoltcp
-    while (g_running) {
-        usleep(50000); // 50 мс такт
+    if (!load_snolc_library()) {
+        LOGE("startEngine: failed to load native engine library");
+        close(tun_fd);
+        return 0;
     }
 
-    LOGI("startEngine: stopped");
-    (*env)->ReleaseStringUTFChars(env, config_toml, config_str);
+    const char *path_str = (*env)->GetStringUTFChars(env, config_path, NULL);
+    LOGI("startEngine: starting snolc engine with config path: %s", path_str);
+
+    int res = g_start_fn(path_str, snolc_android_protect_socket);
+    LOGI("startEngine: snolc engine finished with code: %d", res);
+
+    (*env)->ReleaseStringUTFChars(env, config_path, path_str);
     close(tun_fd);
-    return 1;
+    g_running = 0;
+    return (jlong)res;
 }
 
 JNIEXPORT void JNICALL
@@ -90,6 +121,9 @@ Java_org_owenewans_snolc_SnolcVpnService_stopEngine(
     jobject thiz,
     jlong handle
 ) {
-    LOGI("stopEngine: stopping engine");
+    LOGI("stopEngine: requesting engine stop");
     g_running = 0;
+    if (g_stop_fn) {
+        g_stop_fn();
+    }
 }

@@ -27,7 +27,7 @@ class SnolcVpnService : VpnService() {
         }
     }
 
-    private external fun startEngine(tunFd: Int, configToml: String): Long
+    private external fun startEngine(tunFd: Int, configPath: String): Long
     private external fun stopEngine(handle: Long)
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -49,30 +49,30 @@ class SnolcVpnService : VpnService() {
     private fun startVpn(profile: ServerProfile) {
         startForegroundNotification(profile.server)
 
-        try {
-            val builder = Builder()
-                .setMtu(1280)
-                .addAddress("10.254.1.2", 32)
-                .addRoute("0.0.0.0", 0)
-                .addRoute("::", 0)
-                .addDnsServer("1.1.1.1")
-                .addDnsServer("8.8.8.8")
-                .setSession("snolc-stealth")
+        Thread {
+            try {
+                val builder = Builder()
+                    .setMtu(1280)
+                    .addAddress("10.254.1.2", 32)
+                    .addRoute("0.0.0.0", 0)
+                    .addRoute("::", 0)
+                    .addDnsServer("1.1.1.1")
+                    .addDnsServer("8.8.8.8")
+                    .setSession("snolc-stealth")
 
-            vpnInterface = builder.establish()
-            val tunFd = vpnInterface?.detachFd() ?: return
+                vpnInterface = builder.establish()
+                val tunFd = vpnInterface?.detachFd() ?: return@Thread
 
-            val configToml = ConfigManager.generateClientToml(profile)
+                val configPath = ConfigManager.prepareConfigFiles(this, profile, tunFd)
 
-            Thread {
                 isRunning = true
-                nativeEngineHandle = startEngine(tunFd, configToml)
-            }.start()
-
-        } catch (e: Exception) {
-            e.printStackTrace()
-            stopVpn()
-        }
+                nativeEngineHandle = startEngine(tunFd, configPath)
+                isRunning = false
+            } catch (e: Exception) {
+                e.printStackTrace()
+                stopVpn()
+            }
+        }.start()
     }
 
     // Вызывается из Rust JNI при создании сокета Carrier TCP
