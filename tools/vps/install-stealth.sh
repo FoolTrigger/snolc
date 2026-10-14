@@ -166,7 +166,7 @@ role = "server"
 [options]
 mode = "listen"
 endpoint_ip = "0.0.0.0:$LISTEN_PORT"
-max_connections = 64
+max_connections = 16
 nodelay = true
 EOF
 
@@ -191,7 +191,7 @@ role = "server"
 
 [options]
 dns_mode = "system"
-max_pending_opens = 64
+max_pending_opens = 16
 max_resolved_addresses = 16
 resolve_timeout_ms = 15000
 connect_timeout_ms = 15000
@@ -242,15 +242,15 @@ packages = "$INSTALL_DIR/packages"
 state = "$INSTALL_DIR/state"
 
 [engine]
-max_sessions = 64
-max_flows = 512
-max_pending_sessions = 16
-max_pending_opens = 64
-max_managed_bytes = 67108864
-max_commands = 128
-max_events = 512
+max_sessions = 16
+max_flows = 256
+max_pending_sessions = 4
+max_pending_opens = 16
+max_managed_bytes = 134217728
+max_commands = 64
+max_events = 256
 max_io_chunk = 16384
-max_ingress_packets_per_tick = 64
+max_ingress_packets_per_tick = 32
 connect_timeout_ms = 15000
 handshake_timeout_ms = 15000
 shutdown_timeout_ms = 5000
@@ -259,18 +259,18 @@ shutdown_timeout_ms = 5000
 ipv4 = true
 ipv6 = true
 mtu = 1280
-tcp_socket_rx_bytes = 32768
-tcp_socket_tx_bytes = 32768
+tcp_socket_rx_bytes = 16384
+tcp_socket_tx_bytes = 16384
 udp_socket_rx_bytes = 131072
 udp_socket_tx_bytes = 131072
-udp_metadata_slots = 16
-packet_queue_bytes = 524288
+udp_metadata_slots = 8
+packet_queue_bytes = 262144
 max_udp_payload_bytes = 65507
-reassembly_slots = 8
+reassembly_slots = 4
 reassembly_timeout_ms = 15000
 
 [yamux]
-max_streams_per_session = 64
+max_streams_per_session = 17
 receive_window_bytes = 4456448
 split_send_size = 16384
 read_after_close = true
@@ -281,7 +281,7 @@ source = "toml"
 levels = ["warning", "error", "debug"]
 file = "$INSTALL_DIR/state/snolc.log"
 limit = "16mb"
-queue_bytes = 131072
+queue_bytes = 65536
 max_record_bytes = 2048
 flush_interval_ms = 1000
 on_io_error = "event"
