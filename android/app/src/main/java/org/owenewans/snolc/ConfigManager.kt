@@ -3,7 +3,7 @@ package org.owenewans.snolc
 import android.content.Context
 import android.net.Uri
 import androidx.security.crypto.EncryptedSharedPreferences
-import androidx.security.crypto.MasterKeys
+import androidx.security.crypto.MasterKey
 
 data class ServerProfile(
     val server: String,
@@ -19,11 +19,13 @@ object ConfigManager {
     private const val PREFS_FILE = "snolc_secure_prefs"
 
     private fun getPrefs(context: Context) = try {
-        val masterKeyAlias = MasterKeys.getOrCreate(MasterKeys.AES256_GCM_SPEC)
+        val masterKey = MasterKey.Builder(context)
+            .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
+            .build()
         EncryptedSharedPreferences.create(
-            PREFS_FILE,
-            masterKeyAlias,
             context,
+            PREFS_FILE,
+            masterKey,
             EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
             EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
         )

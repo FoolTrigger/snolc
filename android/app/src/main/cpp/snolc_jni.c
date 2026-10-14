@@ -38,7 +38,7 @@ int snolc_android_protect_socket(int socket_fd) {
     }
 
     jclass cls = (*env)->GetObjectClass(env, g_service_obj);
-    jmethodID method = (*env)->GetMethodID(cls, "protectSocketFromVpn", "(I)Z");
+    jmethodID method = (*env)->GetMethodID(env, cls, "protectSocketFromVpn", "(I)Z");
     if (!method) {
         LOGE("protect_socket: Method protectSocketFromVpn not found");
         if (attached) (*g_jvm)->DetachCurrentThread(g_jvm);
