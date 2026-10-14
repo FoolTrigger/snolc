@@ -114,7 +114,6 @@ struct LockedDependency {
 fn resolve_library(packages: &Path, package: &PackageIdentity) -> Result<PathBuf, DeploymentError> {
     #[cfg(target_os = "android")]
     {
-        let _ = packages;
         let soname = match package.name.as_str() {
             "adapter-tun" => "libsnolc_adapter_tun.so",
             "carrier-tcp" => "libsnolc_carrier_tcp.so",
@@ -122,6 +121,10 @@ fn resolve_library(packages: &Path, package: &PackageIdentity) -> Result<PathBuf
             "policy-local" => "libsnolc_policy_local.so",
             _ => return Err(DeploymentError::PackageEscape),
         };
+        let full_path = packages.join(soname);
+        if full_path.exists() {
+            return Ok(full_path);
+        }
         return Ok(PathBuf::from(soname));
     }
     #[cfg(not(target_os = "android"))]

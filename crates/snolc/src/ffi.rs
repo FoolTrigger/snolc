@@ -1,3 +1,4 @@
+#[allow(unused_imports)]
 use std::ffi::{c_char, CStr, CString};
 use std::path::Path;
 use std::sync::Mutex;

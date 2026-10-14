@@ -188,13 +188,14 @@ object ConfigManager {
         )
 
         // 6. snolc.toml
+        val nativeLibDir = context.applicationInfo.nativeLibraryDir
         val snolcToml = File(filesDir, "snolc.toml")
         snolcToml.writeText(
             """
             wire_version = 1
 
             [paths]
-            packages = "${packagesDir.absolutePath}"
+            packages = "$nativeLibDir"
             state = "${stateDir.absolutePath}"
 
             [engine]

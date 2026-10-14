@@ -1,17 +1,28 @@
 package org.owenewans.snolc
 
 import android.app.Activity
+import android.content.BroadcastReceiver
+import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.net.VpnService
+import android.os.Build
 import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.ContextCompat
 import org.owenewans.snolc.databinding.ActivityMainBinding
 
 class MainActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityMainBinding
+
+    private val statusReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            updateUi()
+        }
+    }
 
     private val vpnPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
@@ -84,16 +95,16 @@ class MainActivity : AppCompatActivity() {
         val intent = Intent(this, SnolcVpnService::class.java).apply {
             action = SnolcVpnService.ACTION_CONNECT
         }
-        startService(intent)
-        binding.tvStatus.text = getString(R.string.status_connected)
+        binding.tvStatus.text = "Подключение..."
         binding.btnConnect.text = getString(R.string.disconnect)
+        ContextCompat.startForegroundService(this, intent)
     }
 
     private fun stopVpnService() {
         val intent = Intent(this, SnolcVpnService::class.java).apply {
             action = SnolcVpnService.ACTION_DISCONNECT
         }
-        startService(intent)
+        ContextCompat.startForegroundService(this, intent)
         binding.tvStatus.text = getString(R.string.status_idle)
         binding.btnConnect.text = getString(R.string.connect)
     }
@@ -117,6 +128,21 @@ class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
+        val filter = IntentFilter(SnolcVpnService.ACTION_STATUS_CHANGED)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            registerReceiver(statusReceiver, filter, RECEIVER_NOT_EXPORTED)
+        } else {
+            registerReceiver(statusReceiver, filter)
+        }
         updateUi()
+    }
+
+    override fun onPause() {
+        super.onPause()
+        try {
+            unregisterReceiver(statusReceiver)
+        } catch (e: Exception) {
+            // Ignored
+        }
     }
 }

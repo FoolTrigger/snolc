@@ -99,7 +99,6 @@ Java_org_owenewans_snolc_SnolcVpnService_startEngine(
 
     if (!load_snolc_library()) {
         LOGE("startEngine: failed to load native engine library");
-        close(tun_fd);
         return 0;
     }
 
@@ -110,7 +109,6 @@ Java_org_owenewans_snolc_SnolcVpnService_startEngine(
     LOGI("startEngine: snolc engine finished with code: %d", res);
 
     (*env)->ReleaseStringUTFChars(env, config_path, path_str);
-    close(tun_fd);
     g_running = 0;
     return (jlong)res;
 }

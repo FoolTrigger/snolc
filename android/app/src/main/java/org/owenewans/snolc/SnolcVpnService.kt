@@ -4,8 +4,11 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Intent
+import android.content.pm.ServiceInfo
 import android.net.VpnService
+import android.os.Build
 import android.os.ParcelFileDescriptor
+import android.util.Log
 import androidx.core.app.NotificationCompat
 
 class SnolcVpnService : VpnService() {
@@ -16,6 +19,8 @@ class SnolcVpnService : VpnService() {
     companion object {
         const val ACTION_CONNECT = "org.owenewans.snolc.CONNECT"
         const val ACTION_DISCONNECT = "org.owenewans.snolc.DISCONNECT"
+        const val ACTION_STATUS_CHANGED = "org.owenewans.snolc.STATUS_CHANGED"
+        const val TAG = "SnolcVpnService"
         var isRunning = false
 
         init {
@@ -31,7 +36,7 @@ class SnolcVpnService : VpnService() {
                 try {
                     System.loadLibrary(lib)
                 } catch (e: UnsatisfiedLinkError) {
-                    android.util.Log.e("SnolcVpnService", "Failed to load library: $lib", e)
+                    Log.e(TAG, "Failed to load library: $lib", e)
                 }
             }
         }
@@ -63,24 +68,42 @@ class SnolcVpnService : VpnService() {
             try {
                 val builder = Builder()
                     .setMtu(1280)
-                    .addAddress("10.254.1.2", 32)
+                    .addAddress("10.254.1.2", 24)
                     .addRoute("0.0.0.0", 0)
-                    .addRoute("::", 0)
                     .addDnsServer("1.1.1.1")
                     .addDnsServer("8.8.8.8")
                     .setSession("snolc-stealth")
 
-                vpnInterface = builder.establish()
-                val tunFd = vpnInterface?.detachFd() ?: return@Thread
+                try {
+                    builder.addAddress("fd00::2", 64)
+                    builder.addRoute("::", 0)
+                    builder.addDnsServer("2606:4700:4700::1111")
+                } catch (e: Exception) {
+                    Log.w(TAG, "IPv6 not supported: ${e.message}")
+                }
+
+                val pfd = builder.establish() ?: run {
+                    Log.e(TAG, "builder.establish() returned null")
+                    stopVpn()
+                    return@Thread
+                }
+                vpnInterface = pfd
+                val tunFd = pfd.fd
+                Log.i(TAG, "VPN established, TUN FD = $tunFd")
 
                 val configPath = ConfigManager.prepareConfigFiles(this, profile, tunFd)
+                Log.i(TAG, "Prepared config at: $configPath")
 
                 isRunning = true
+                sendBroadcast(Intent(ACTION_STATUS_CHANGED))
+
                 nativeEngineHandle = startEngine(tunFd, configPath)
-                isRunning = false
+                Log.i(TAG, "Engine finished, handle = $nativeEngineHandle")
             } catch (e: Exception) {
-                e.printStackTrace()
+                Log.e(TAG, "Exception during VPN run", e)
+            } finally {
                 stopVpn()
+                sendBroadcast(Intent(ACTION_STATUS_CHANGED))
             }
         }.start()
     }
@@ -88,7 +111,9 @@ class SnolcVpnService : VpnService() {
     // Вызывается из Rust JNI при создании сокета Carrier TCP
     // Защищает сокет от маршрутизации через VPN, исключая петлю трафика
     fun protectSocketFromVpn(socketFd: Int): Boolean {
-        return protect(socketFd)
+        val result = protect(socketFd)
+        Log.i(TAG, "protect(fd=$socketFd) -> $result")
+        return result
     }
 
     private fun stopVpn() {
@@ -96,11 +121,13 @@ class SnolcVpnService : VpnService() {
         if (nativeEngineHandle != 0L) {
             stopEngine(nativeEngineHandle)
             nativeEngineHandle = 0
+        } else {
+            stopEngine(0)
         }
         try {
             vpnInterface?.close()
         } catch (e: Exception) {
-            e.printStackTrace()
+            Log.e(TAG, "Error closing vpnInterface", e)
         }
         vpnInterface = null
         stopForeground(STOP_FOREGROUND_REMOVE)
@@ -124,7 +151,11 @@ class SnolcVpnService : VpnService() {
             .setOngoing(true)
             .build()
 
-        startForeground(1, notification)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            startForeground(1, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
+        } else {
+            startForeground(1, notification)
+        }
     }
 
     override fun onDestroy() {
