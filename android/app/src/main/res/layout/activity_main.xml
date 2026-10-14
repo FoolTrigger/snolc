@@ -107,13 +107,18 @@
         app:cornerRadius="12dp"
         app:strokeColor="@color/primary" />
 
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1" />
+
     <!-- Статистика использования RAM -->
     <TextView
         android:id="@+id/tvRamUsage"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_gravity="center_horizontal"
-        android:layout_marginTop="auto"
+        android:layout_marginTop="16dp"
         android:text="RAM движка: ~12 МБ (smoltcp userspace stack)"
         android:textColor="@color/text_secondary"
         android:textSize="12sp" />
