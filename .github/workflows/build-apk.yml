@@ -20,18 +20,20 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.8'
 
-      - name: Install NDK
+      - name: Accept Android SDK Licenses & Prepare NDK
         run: |
-          sdkmanager --install "ndk;26.3.11579264" "cmake;3.22.1"
+          yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
+          $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "cmake;3.22.1" "ndk;26.1.10909125" || true
 
       - name: Build APK with Gradle
         working-directory: android
         run: |
-          chmod +x gradlew || gradle wrapper
-          ./gradlew assembleRelease || ./gradlew assembleDebug
+          gradle assembleDebug --stacktrace
 
       - name: Locate and Rename APK
         run: |
