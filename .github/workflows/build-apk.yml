@@ -14,10 +14,10 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Set up Rust Toolchain
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: aarch64-linux-android, armv7-linux-androideabi
+      - name: Set up Rust Toolchain and Targets
+        run: |
+          rustup show
+          rustup target add aarch64-linux-android armv7-linux-androideabi
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
@@ -43,19 +43,29 @@ jobs:
           for MOD in adapter-tun carrier-tcp protection-noise policy-local; do
             echo "Downloading $MOD for aarch64-linux-android..."
             curl -fsSL "https://github.com/owenewans/snolc-modules/releases/download/v0.0.4/${MOD}-0.0.4-aarch64-linux-android.tar.gz" -o "${MOD}-arm64.tar.gz"
-            tar -zxvf "${MOD}-arm64.tar.gz" -C android/app/src/main/jniLibs/arm64-v8a --strip-components=1 lib/
-            rm "${MOD}-arm64.tar.gz"
+            tar -zxf "${MOD}-arm64.tar.gz"
+            cp lib/*.so android/app/src/main/jniLibs/arm64-v8a/
+            rm -rf lib LICENSE THIRD_PARTY_NOTICES.txt templates "${MOD}-arm64.tar.gz"
 
             echo "Downloading $MOD for armv7-linux-androideabi..."
             curl -fsSL "https://github.com/owenewans/snolc-modules/releases/download/v0.0.4/${MOD}-0.0.4-armv7-linux-androideabi.tar.gz" -o "${MOD}-armv7.tar.gz"
-            tar -zxvf "${MOD}-armv7.tar.gz" -C android/app/src/main/jniLibs/armeabi-v7a --strip-components=1 lib/
-            rm "${MOD}-armv7.tar.gz"
+            tar -zxf "${MOD}-armv7.tar.gz"
+            cp lib/*.so android/app/src/main/jniLibs/armeabi-v7a/
+            rm -rf lib LICENSE THIRD_PARTY_NOTICES.txt templates "${MOD}-armv7.tar.gz"
           done
 
       - name: Build snolc Core cdylib with Cargo
         run: |
-          export ANDROID_NDK_HOME=$ANDROID_HOME/ndk/26.1.10909125
+          if [ -z "$ANDROID_NDK_HOME" ] || [ ! -d "$ANDROID_NDK_HOME" ]; then
+            if [ -d "$ANDROID_HOME/ndk/26.1.10909125" ]; then
+              export ANDROID_NDK_HOME=$ANDROID_HOME/ndk/26.1.10909125
+            else
+              export ANDROID_NDK_HOME=$(ls -d $ANDROID_HOME/ndk/* 2>/dev/null | sort -V | tail -n 1)
+            fi
+          fi
+          echo "Using Android NDK: $ANDROID_NDK_HOME"
           export TOOLCHAIN=$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin
+          export PATH=$TOOLCHAIN:$PATH
 
           # aarch64 (arm64-v8a)
           export CC_aarch64_linux_android=$TOOLCHAIN/aarch64-linux-android24-clang
@@ -72,9 +82,9 @@ jobs:
           cp target/armv7-linux-androideabi/release/libsnolc.so android/app/src/main/jniLibs/armeabi-v7a/
 
           echo "Listing bundled JNI libraries for arm64-v8a:"
-          ls -lh android/app/src/main/jniLibs/arm64-v8a/
+          ls -la android/app/src/main/jniLibs/arm64-v8a/
           echo "Listing bundled JNI libraries for armeabi-v7a:"
-          ls -lh android/app/src/main/jniLibs/armeabi-v7a/
+          ls -la android/app/src/main/jniLibs/armeabi-v7a/
 
       - name: Build APK with Gradle
         working-directory: android

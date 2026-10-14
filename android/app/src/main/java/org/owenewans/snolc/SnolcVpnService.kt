@@ -19,10 +19,20 @@ class SnolcVpnService : VpnService() {
         var isRunning = false
 
         init {
-            try {
-                System.loadLibrary("snolc_android")
-            } catch (e: UnsatisfiedLinkError) {
-                e.printStackTrace()
+            val libs = listOf(
+                "snolc_protection_noise",
+                "snolc_carrier_tcp",
+                "snolc_policy_local",
+                "snolc_adapter_tun",
+                "snolc",
+                "snolc_android"
+            )
+            for (lib in libs) {
+                try {
+                    System.loadLibrary(lib)
+                } catch (e: UnsatisfiedLinkError) {
+                    android.util.Log.e("SnolcVpnService", "Failed to load library: $lib", e)
+                }
             }
         }
     }
