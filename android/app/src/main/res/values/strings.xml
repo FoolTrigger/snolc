@@ -1,0 +1,11 @@
+<resources>
+    <string name="app_name">snolc Stealth</string>
+    <string name="connect">Подключиться</string>
+    <string name="disconnect">Отключиться</string>
+    <string name="status_idle">Готов к подключению</string>
+    <string name="status_connected">Подключено (Защищено REALITY)</string>
+    <string name="status_connecting">Подключение...</string>
+    <string name="import_profile">Импортировать ссылку snolc://</string>
+    <string name="server_label">Сервер:</string>
+    <string name="traffic_label">Трафик: 0 МБ</string>
+</resources>
