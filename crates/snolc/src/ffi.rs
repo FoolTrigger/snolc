@@ -10,6 +10,32 @@ use crate::events::Event;
 pub type ProtectCallback = unsafe extern "C" fn(i32) -> i32;
 
 static STOP_HANDLE: Mutex<Option<EngineHandle>> = Mutex::new(None);
+static LAST_ERROR: Mutex<String> = Mutex::new(String::new());
+
+pub fn set_last_error(msg: &str) {
+    if let Ok(mut lock) = LAST_ERROR.lock() {
+        *lock = msg.to_string();
+    }
+}
+
+pub fn get_last_error() -> String {
+    LAST_ERROR.lock().map(|l| l.clone()).unwrap_or_default()
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn snolc_engine_get_last_error(buf: *mut c_char, max_len: usize) -> i32 {
+    if buf.is_null() || max_len == 0 {
+        return -1;
+    }
+    let err = get_last_error();
+    let bytes = err.as_bytes();
+    let copy_len = bytes.len().min(max_len - 1);
+    unsafe {
+        std::ptr::copy_nonoverlapping(bytes.as_ptr(), buf.cast(), copy_len);
+        *buf.add(copy_len) = 0;
+    }
+    copy_len as i32
+}
 
 #[cfg(target_os = "android")]
 #[link(name = "log")]
@@ -39,6 +65,9 @@ struct NativeHost {
 impl Host for NativeHost {
     fn engine_event(&self, event: &Event) {
         log_msg(4, &format!("Engine event: {:?}", event));
+        if let Event::ModuleError { instance, message } = event {
+            set_last_error(&format!("{}: {}", instance, message));
+        }
     }
 
     fn protect_socket(&self, socket: i64) -> bool {
@@ -58,14 +87,18 @@ pub unsafe extern "C" fn snolc_engine_start(
     protect_cb: Option<ProtectCallback>,
 ) -> i32 {
     if config_path.is_null() {
-        log_msg(6, "snolc_engine_start: config_path is null");
+        let msg = "snolc_engine_start: config_path is null";
+        log_msg(6, msg);
+        set_last_error(msg);
         return -1;
     }
 
     let path_str = match unsafe { CStr::from_ptr(config_path) }.to_str() {
         Ok(s) => s,
         Err(e) => {
-            log_msg(6, &format!("snolc_engine_start: invalid UTF-8 path: {:?}", e));
+            let msg = format!("snolc_engine_start: invalid UTF-8 path: {:?}", e);
+            log_msg(6, &msg);
+            set_last_error(&msg);
             return -1;
         }
     };
@@ -76,7 +109,9 @@ pub unsafe extern "C" fn snolc_engine_start(
     let deployment = match Deployment::load(path) {
         Ok(d) => d,
         Err(e) => {
-            log_msg(6, &format!("Deployment::load error: {:?}", e));
+            let msg = format!("Deployment::load error: {:?}", e);
+            log_msg(6, &msg);
+            set_last_error(&msg);
             return -2;
         }
     };
@@ -87,7 +122,9 @@ pub unsafe extern "C" fn snolc_engine_start(
     let validated = match Engine::validate(config, modules) {
         Ok(v) => v,
         Err(e) => {
-            log_msg(6, &format!("Engine::validate error: {:?}", e));
+            let msg = format!("Engine::validate error: {:?}", e);
+            log_msg(6, &msg);
+            set_last_error(&msg);
             return -3;
         }
     };
@@ -96,7 +133,9 @@ pub unsafe extern "C" fn snolc_engine_start(
     let (mut engine, handle) = match Engine::build(validated, host) {
         Ok(pair) => pair,
         Err(e) => {
-            log_msg(6, &format!("Engine::build error: {:?}", e));
+            let msg = format!("Engine::build error: {:?}", e);
+            log_msg(6, &msg);
+            set_last_error(&msg);
             return -4;
         }
     };
@@ -120,7 +159,9 @@ pub unsafe extern "C" fn snolc_engine_start(
             0
         }
         Err(e) => {
-            log_msg(6, &format!("Engine::run error: {:?}", e));
+            let msg = format!("Engine::run error: {:?}", e);
+            log_msg(6, &msg);
+            set_last_error(&msg);
             -5
         }
     }

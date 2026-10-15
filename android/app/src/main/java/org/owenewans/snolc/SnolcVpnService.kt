@@ -20,8 +20,18 @@ class SnolcVpnService : VpnService() {
         const val ACTION_CONNECT = "org.owenewans.snolc.CONNECT"
         const val ACTION_DISCONNECT = "org.owenewans.snolc.DISCONNECT"
         const val ACTION_STATUS_CHANGED = "org.owenewans.snolc.STATUS_CHANGED"
+        const val EXTRA_STATE = "extra_state"
+        const val EXTRA_ERROR = "extra_error"
+
+        const val STATE_IDLE = "IDLE"
+        const val STATE_CONNECTING = "CONNECTING"
+        const val STATE_CONNECTED = "CONNECTED"
+        const val STATE_ERROR = "ERROR"
+
         const val TAG = "SnolcVpnService"
         var isRunning = false
+        var currentStatus = STATE_IDLE
+        var lastError: String? = null
 
         init {
             val libs = listOf(
@@ -44,17 +54,36 @@ class SnolcVpnService : VpnService() {
 
     private external fun startEngine(tunFd: Int, configPath: String): Long
     private external fun stopEngine(handle: Long)
+    private external fun getLastEngineError(): String?
+
+    private fun broadcastStatus(state: String, error: String? = null) {
+        currentStatus = state
+        if (error != null) {
+            lastError = error
+        }
+        val intent = Intent(ACTION_STATUS_CHANGED).apply {
+            setPackage(packageName)
+            putExtra(EXTRA_STATE, state)
+            if (error != null) {
+                putExtra(EXTRA_ERROR, error)
+            }
+        }
+        sendBroadcast(intent)
+    }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
             ACTION_DISCONNECT -> {
                 stopVpn()
+                broadcastStatus(STATE_IDLE)
                 return START_NOT_STICKY
             }
             ACTION_CONNECT -> {
                 val profile = ConfigManager.loadProfile(this)
                 if (profile != null) {
                     startVpn(profile)
+                } else {
+                    broadcastStatus(STATE_ERROR, "Профиль не найден")
                 }
             }
         }
@@ -62,10 +91,22 @@ class SnolcVpnService : VpnService() {
     }
 
     private fun startVpn(profile: ServerProfile) {
+        broadcastStatus(STATE_CONNECTING)
         startForegroundNotification(profile.server)
 
         Thread {
             try {
+                // 1. Предварительное разрешение DNS сервера ДО захвата маршрута TUN интерфейсом
+                val serverHost = profile.server.substringBefore(":")
+                val serverPort = if (profile.server.contains(":")) profile.server.substringAfter(":") else "443"
+                val resolvedIp = try {
+                    java.net.InetAddress.getByName(serverHost).hostAddress ?: serverHost
+                } catch (e: Exception) {
+                    Log.w(TAG, "DNS resolution failed, falling back to raw host: ${e.message}")
+                    serverHost
+                }
+                Log.i(TAG, "Target server resolved to: $resolvedIp:$serverPort")
+
                 val builder = Builder()
                     .setMtu(1280)
                     .addAddress("10.254.1.2", 24)
@@ -83,27 +124,42 @@ class SnolcVpnService : VpnService() {
                 }
 
                 val pfd = builder.establish() ?: run {
-                    Log.e(TAG, "builder.establish() returned null")
+                    val err = "VpnService.Builder.establish() вернул null"
+                    Log.e(TAG, err)
+                    broadcastStatus(STATE_ERROR, err)
                     stopVpn()
                     return@Thread
                 }
                 vpnInterface = pfd
-                val tunFd = pfd.fd
-                Log.i(TAG, "VPN established, TUN FD = $tunFd")
+                val dupPfd = ParcelFileDescriptor.dup(pfd.fileDescriptor)
+                val tunFd = dupPfd?.detachFd() ?: pfd.fd
+                Log.i(TAG, "VPN established, TUN FD = $tunFd (base pfd = ${pfd.fd})")
 
-                val configPath = ConfigManager.prepareConfigFiles(this, profile, tunFd)
+                val configPath = ConfigManager.prepareConfigFiles(this, profile, tunFd, resolvedIp, serverPort)
                 Log.i(TAG, "Prepared config at: $configPath")
 
                 isRunning = true
-                sendBroadcast(Intent(ACTION_STATUS_CHANGED))
+                broadcastStatus(STATE_CONNECTED)
 
-                nativeEngineHandle = startEngine(tunFd, configPath)
-                Log.i(TAG, "Engine finished, handle = $nativeEngineHandle")
+                val exitCode = startEngine(tunFd, configPath)
+                Log.i(TAG, "Engine finished with code: $exitCode")
+
+                if (exitCode != 0L) {
+                    val nativeErr = getLastEngineError() ?: "Движок snolc завершился с кодом $exitCode"
+                    Log.e(TAG, "Native engine failure: $nativeErr")
+                    broadcastStatus(STATE_ERROR, nativeErr)
+                } else {
+                    broadcastStatus(STATE_IDLE)
+                }
             } catch (e: Exception) {
                 Log.e(TAG, "Exception during VPN run", e)
+                val err = e.localizedMessage ?: e.message ?: "Ошибка VPN соединения"
+                broadcastStatus(STATE_ERROR, err)
             } finally {
                 stopVpn()
-                sendBroadcast(Intent(ACTION_STATUS_CHANGED))
+                if (currentStatus != STATE_ERROR) {
+                    broadcastStatus(STATE_IDLE)
+                }
             }
         }.start()
     }

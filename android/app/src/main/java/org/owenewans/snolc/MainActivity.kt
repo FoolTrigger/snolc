@@ -20,7 +20,9 @@ class MainActivity : AppCompatActivity() {
 
     private val statusReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
-            updateUi()
+            val state = intent?.getStringExtra(SnolcVpnService.EXTRA_STATE)
+            val error = intent?.getStringExtra(SnolcVpnService.EXTRA_ERROR)
+            updateUi(state, error)
         }
     }
 
@@ -47,7 +49,7 @@ class MainActivity : AppCompatActivity() {
         updateUi()
 
         binding.btnConnect.setOnClickListener {
-            if (SnolcVpnService.isRunning) {
+            if (SnolcVpnService.isRunning || SnolcVpnService.currentStatus == SnolcVpnService.STATE_CONNECTING) {
                 stopVpnService()
             } else {
                 prepareAndConnect()
@@ -95,8 +97,7 @@ class MainActivity : AppCompatActivity() {
         val intent = Intent(this, SnolcVpnService::class.java).apply {
             action = SnolcVpnService.ACTION_CONNECT
         }
-        binding.tvStatus.text = "Подключение..."
-        binding.btnConnect.text = getString(R.string.disconnect)
+        updateUi(SnolcVpnService.STATE_CONNECTING)
         ContextCompat.startForegroundService(this, intent)
     }
 
@@ -105,11 +106,10 @@ class MainActivity : AppCompatActivity() {
             action = SnolcVpnService.ACTION_DISCONNECT
         }
         ContextCompat.startForegroundService(this, intent)
-        binding.tvStatus.text = getString(R.string.status_idle)
-        binding.btnConnect.text = getString(R.string.connect)
+        updateUi(SnolcVpnService.STATE_IDLE)
     }
 
-    private fun updateUi() {
+    private fun updateUi(state: String? = null, error: String? = null) {
         val profile = ConfigManager.loadProfile(this)
         if (profile != null) {
             binding.tvServerInfo.text = "${profile.server} (Маскировка: ${profile.sni})"
@@ -117,12 +117,31 @@ class MainActivity : AppCompatActivity() {
             binding.tvServerInfo.text = "Сервер не настроен"
         }
 
-        if (SnolcVpnService.isRunning) {
-            binding.tvStatus.text = getString(R.string.status_connected)
-            binding.btnConnect.text = getString(R.string.disconnect)
-        } else {
-            binding.tvStatus.text = getString(R.string.status_idle)
-            binding.btnConnect.text = getString(R.string.connect)
+        val currentState = state ?: SnolcVpnService.currentStatus
+
+        when (currentState) {
+            SnolcVpnService.STATE_CONNECTED -> {
+                binding.tvStatus.text = getString(R.string.status_connected)
+                binding.tvStatus.setTextColor(ContextCompat.getColor(this, android.R.color.holo_green_dark))
+                binding.btnConnect.text = getString(R.string.disconnect)
+            }
+            SnolcVpnService.STATE_CONNECTING -> {
+                binding.tvStatus.text = "Подключение..."
+                binding.tvStatus.setTextColor(ContextCompat.getColor(this, android.R.color.holo_orange_dark))
+                binding.btnConnect.text = getString(R.string.disconnect)
+            }
+            SnolcVpnService.STATE_ERROR -> {
+                val errText = error ?: SnolcVpnService.lastError ?: "Ошибка подключения"
+                binding.tvStatus.text = "Ошибка: $errText"
+                binding.tvStatus.setTextColor(ContextCompat.getColor(this, android.R.color.holo_red_dark))
+                binding.btnConnect.text = getString(R.string.connect)
+                Toast.makeText(this, errText, Toast.LENGTH_LONG).show()
+            }
+            else -> { // STATE_IDLE
+                binding.tvStatus.text = getString(R.string.status_idle)
+                binding.tvStatus.setTextColor(ContextCompat.getColor(this, android.R.color.darker_gray))
+                binding.btnConnect.text = getString(R.string.connect)
+            }
         }
     }
 

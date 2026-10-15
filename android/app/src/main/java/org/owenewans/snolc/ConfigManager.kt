@@ -37,8 +37,11 @@ object ConfigManager {
 
     fun parseProfileUri(uriString: String): ServerProfile? {
         return try {
-            val uri = Uri.parse(uriString)
-            if (uri.scheme != "snolc" || uri.host != "profile") return null
+            val clean = uriString.trim()
+            val uri = Uri.parse(clean)
+            if (uri.scheme != "snolc") return null
+            val host = uri.host ?: uri.authority ?: ""
+            if (!host.startsWith("profile")) return null
 
             val server = uri.getQueryParameter("server") ?: return null
             val sni = uri.getQueryParameter("sni") ?: "dl.google.com"
@@ -76,7 +79,13 @@ object ConfigManager {
         return ServerProfile(server, sni, key, shortId, user, token)
     }
 
-    fun prepareConfigFiles(context: Context, profile: ServerProfile, tunFd: Int): String {
+    fun prepareConfigFiles(
+        context: Context,
+        profile: ServerProfile,
+        tunFd: Int,
+        resolvedIp: String? = null,
+        resolvedPort: String? = null
+    ): String {
         val filesDir = context.filesDir
         val packagesDir = File(filesDir, "packages").apply { mkdirs() }
         val stateDir = File(filesDir, "state").apply { mkdirs() }
@@ -104,13 +113,13 @@ object ConfigManager {
 
         // 3. Carrier TCP (resolve host to IP if needed)
         val serverHost = profile.server.substringBefore(":")
-        val serverPort = if (profile.server.contains(":")) profile.server.substringAfter(":") else "443"
-        val resolvedIp = try {
+        val serverPort = resolvedPort ?: if (profile.server.contains(":")) profile.server.substringAfter(":") else "443"
+        val endpointIp = resolvedIp ?: try {
             InetAddress.getByName(serverHost).hostAddress ?: serverHost
         } catch (e: Exception) {
             serverHost
         }
-        val endpoint = "$resolvedIp:$serverPort"
+        val endpoint = "$endpointIp:$serverPort"
 
         val tcpToml = File(filesDir, "tcp.toml")
         tcpToml.writeText(

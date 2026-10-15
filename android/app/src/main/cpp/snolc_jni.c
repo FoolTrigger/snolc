@@ -26,7 +26,11 @@ static int load_snolc_library(void) {
     }
     g_libsnolc = dlopen("libsnolc.so", RTLD_NOW | RTLD_GLOBAL);
     if (!g_libsnolc) {
-        LOGE("load_snolc_library: dlopen(libsnolc.so) failed: %s", dlerror());
+        // Fallback: try dlopen(NULL) because System.loadLibrary("snolc") already loaded it in process namespace
+        g_libsnolc = dlopen(NULL, RTLD_NOW | RTLD_GLOBAL);
+    }
+    if (!g_libsnolc) {
+        LOGE("load_snolc_library: dlopen failed: %s", dlerror());
         return 0;
     }
     g_start_fn = (snolc_engine_start_fn)dlsym(g_libsnolc, "snolc_engine_start");
@@ -35,7 +39,7 @@ static int load_snolc_library(void) {
         LOGE("load_snolc_library: dlsym failed: start=%p, stop=%p", g_start_fn, g_stop_fn);
         return 0;
     }
-    LOGI("load_snolc_library: successfully loaded libsnolc.so");
+    LOGI("load_snolc_library: successfully loaded libsnolc.so symbols");
     return 1;
 }
 
@@ -124,4 +128,23 @@ Java_org_owenewans_snolc_SnolcVpnService_stopEngine(
     if (g_stop_fn) {
         g_stop_fn();
     }
+}
+
+JNIEXPORT jstring JNICALL
+Java_org_owenewans_snolc_SnolcVpnService_getLastEngineError(
+    JNIEnv *env,
+    jobject thiz
+) {
+    char buf[2048] = {0};
+    if (g_libsnolc) {
+        typedef int (*get_err_fn)(char *, size_t);
+        get_err_fn fn = (get_err_fn)dlsym(g_libsnolc, "snolc_engine_get_last_error");
+        if (fn) {
+            fn(buf, sizeof(buf));
+        }
+    }
+    if (buf[0] == '\0') {
+        return NULL;
+    }
+    return (*env)->NewStringUTF(env, buf);
 }
