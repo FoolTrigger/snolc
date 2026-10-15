@@ -16,6 +16,8 @@ jobs:
 
       - name: Set up Rust Toolchain and Targets
         run: |
+          rustup default stable
+          rustup update stable
           rustup show
           rustup target add aarch64-linux-android armv7-linux-androideabi
 
@@ -37,6 +39,7 @@ jobs:
 
       - name: Build snolc Core and Native Modules with Cargo
         run: |
+          mkdir -p output
           mkdir -p android/app/src/main/jniLibs/arm64-v8a
           mkdir -p android/app/src/main/jniLibs/armeabi-v7a
 
@@ -51,26 +54,40 @@ jobs:
           export TOOLCHAIN=$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin
           export PATH=$TOOLCHAIN:$PATH
 
-          PACKAGES="-p snolc -p snolc-adapter-tun -p snolc-carrier-tcp -p snolc-protection-noise -p snolc-policy-local"
+          PACKAGES="snolc snolc-adapter-tun snolc-carrier-tcp snolc-protection-noise snolc-policy-local"
 
           # aarch64 (arm64-v8a)
           export CC_aarch64_linux_android=$TOOLCHAIN/aarch64-linux-android24-clang
           export AR_aarch64_linux_android=$TOOLCHAIN/llvm-ar
           export CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER=$TOOLCHAIN/aarch64-linux-android24-clang
-          cargo build --release --target aarch64-linux-android $PACKAGES
+          for PKG in $PACKAGES; do
+            echo "===> [arm64-v8a] Compiling $PKG..."
+            cargo build --release --target aarch64-linux-android -p "$PKG" 2>&1 | tee -a output/cargo-build.log
+          done
           cp target/aarch64-linux-android/release/libsnolc*.so android/app/src/main/jniLibs/arm64-v8a/
 
           # armv7 (armeabi-v7a)
           export CC_armv7_linux_androideabi=$TOOLCHAIN/armv7a-linux-androideabi24-clang
           export AR_armv7_linux_androideabi=$TOOLCHAIN/llvm-ar
           export CARGO_TARGET_ARMV7_LINUX_ANDROIDEABI_LINKER=$TOOLCHAIN/armv7a-linux-androideabi24-clang
-          cargo build --release --target armv7-linux-androideabi $PACKAGES
+          for PKG in $PACKAGES; do
+            echo "===> [armeabi-v7a] Compiling $PKG..."
+            cargo build --release --target armv7-linux-androideabi -p "$PKG" 2>&1 | tee -a output/cargo-build.log
+          done
           cp target/armv7-linux-androideabi/release/libsnolc*.so android/app/src/main/jniLibs/armeabi-v7a/
 
           echo "Listing bundled JNI libraries for arm64-v8a:"
           ls -la android/app/src/main/jniLibs/arm64-v8a/
           echo "Listing bundled JNI libraries for armeabi-v7a:"
           ls -la android/app/src/main/jniLibs/armeabi-v7a/
+
+      - name: Upload Build Log on Failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cargo-failure-log
+          path: output/cargo-build.log
+          if-no-files-found: ignore
 
       - name: Build APK with Gradle
         working-directory: android
