@@ -63,12 +63,12 @@ cd "$BUILD_DIR"
 rm -rf snolc
 git clone --depth 1 https://github.com/fooltrigger/snolc.git snolc
 cd snolc
-cargo build --release --locked -p snolc-cli
+cargo build --release -p snolc-cli
 cp target/release/snolc "$INSTALL_DIR/bin/"
 chmod +x "$INSTALL_DIR/bin/snolc"
 ok "Бинарник snolc собран и установлен в $INSTALL_DIR/bin/snolc."
 
-log "===> 5. Установка официальных нативных модулей и генерация package locks..."
+log "===> 5. Сборка и установка официальных нативных модулей..."
 ARCH=$(uname -m)
 case "$ARCH" in
     x86_64) TARGET="x86_64-unknown-linux-gnu" ;;
@@ -81,30 +81,12 @@ MODULES=("carrier-tcp" "protection-noise" "adapter-direct" "policy-local")
 for MOD in "${MODULES[@]}"; do
     MOD_UNDERSCORE="${MOD//-/_}"
     LIB_NAME="libsnolc_${MOD_UNDERSCORE}.so"
-    TAR_NAME="${MOD}-0.0.4-${TARGET}.tar.gz"
-    RELEASE_URL="https://github.com/owenewans/snolc-modules/releases/download/v0.0.4/${TAR_NAME}"
     TMP_SO="$BUILD_DIR/${LIB_NAME}"
 
-    log "Установка модуля owenewans/${MOD}@0.0.4..."
-    DOWNLOADED=false
-    if curl -sL --fail "$RELEASE_URL" -o "$BUILD_DIR/${TAR_NAME}"; then
-        if tar -xzf "$BUILD_DIR/${TAR_NAME}" -C "$BUILD_DIR" "lib/${LIB_NAME}" 2>/dev/null; then
-            mv "$BUILD_DIR/lib/${LIB_NAME}" "$TMP_SO"
-            rm -rf "$BUILD_DIR/lib"
-            DOWNLOADED=true
-        fi
-    fi
-
-    if [ "$DOWNLOADED" != "true" ]; then
-        warn "Предсобранный архив не найден или поврежден, собираем из исходников..."
-        cd "$BUILD_DIR"
-        if [ ! -d "snolc-modules" ]; then
-            git clone --depth 1 https://github.com/owenewans/snolc-modules.git
-        fi
-        cd snolc-modules
-        cargo build --release --locked -p "snolc-${MOD}"
-        cp "target/release/${LIB_NAME}" "$TMP_SO"
-    fi
+    log "Сборка модуля owenewans/${MOD}@0.0.4 из исходников..."
+    cd "$BUILD_DIR/snolc"
+    cargo build --release -p "snolc-${MOD}"
+    cp "target/release/${LIB_NAME}" "$TMP_SO"
 
     CONTENT_SHA256=$(sha256sum "$TMP_SO" | awk '{print $1}')
     STORE_DIR="$INSTALL_DIR/packages/store/owenewans/${MOD}/0.0.4/${TARGET}/${CONTENT_SHA256}"

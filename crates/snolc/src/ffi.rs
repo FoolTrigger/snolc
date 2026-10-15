@@ -1,5 +1,6 @@
-#[allow(unused_imports)]
-use std::ffi::{c_char, CStr, CString};
+use std::ffi::{c_char, CStr};
+#[cfg(target_os = "android")]
+use std::ffi::CString;
 use std::path::Path;
 use std::sync::Mutex;
 

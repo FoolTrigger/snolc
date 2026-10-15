@@ -35,27 +35,11 @@ jobs:
           yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
           $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "cmake;3.22.1" "ndk;26.1.10909125" || true
 
-      - name: Download Prebuilt Official snolc Modules
+      - name: Build snolc Core and Native Modules with Cargo
         run: |
           mkdir -p android/app/src/main/jniLibs/arm64-v8a
           mkdir -p android/app/src/main/jniLibs/armeabi-v7a
 
-          for MOD in adapter-tun carrier-tcp protection-noise policy-local; do
-            echo "Downloading $MOD for aarch64-linux-android..."
-            curl -fsSL "https://github.com/owenewans/snolc-modules/releases/download/v0.0.4/${MOD}-0.0.4-aarch64-linux-android.tar.gz" -o "${MOD}-arm64.tar.gz"
-            tar -zxf "${MOD}-arm64.tar.gz"
-            cp lib/*.so android/app/src/main/jniLibs/arm64-v8a/
-            rm -rf lib LICENSE THIRD_PARTY_NOTICES.txt templates "${MOD}-arm64.tar.gz"
-
-            echo "Downloading $MOD for armv7-linux-androideabi..."
-            curl -fsSL "https://github.com/owenewans/snolc-modules/releases/download/v0.0.4/${MOD}-0.0.4-armv7-linux-androideabi.tar.gz" -o "${MOD}-armv7.tar.gz"
-            tar -zxf "${MOD}-armv7.tar.gz"
-            cp lib/*.so android/app/src/main/jniLibs/armeabi-v7a/
-            rm -rf lib LICENSE THIRD_PARTY_NOTICES.txt templates "${MOD}-armv7.tar.gz"
-          done
-
-      - name: Build snolc Core cdylib with Cargo
-        run: |
           if [ -z "$ANDROID_NDK_HOME" ] || [ ! -d "$ANDROID_NDK_HOME" ]; then
             if [ -d "$ANDROID_HOME/ndk/26.1.10909125" ]; then
               export ANDROID_NDK_HOME=$ANDROID_HOME/ndk/26.1.10909125
@@ -67,19 +51,21 @@ jobs:
           export TOOLCHAIN=$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin
           export PATH=$TOOLCHAIN:$PATH
 
+          PACKAGES="-p snolc -p snolc-adapter-tun -p snolc-carrier-tcp -p snolc-protection-noise -p snolc-policy-local"
+
           # aarch64 (arm64-v8a)
           export CC_aarch64_linux_android=$TOOLCHAIN/aarch64-linux-android24-clang
           export AR_aarch64_linux_android=$TOOLCHAIN/llvm-ar
           export CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER=$TOOLCHAIN/aarch64-linux-android24-clang
-          cargo build --release --target aarch64-linux-android -p snolc
-          cp target/aarch64-linux-android/release/libsnolc.so android/app/src/main/jniLibs/arm64-v8a/
+          cargo build --release --target aarch64-linux-android $PACKAGES
+          cp target/aarch64-linux-android/release/libsnolc*.so android/app/src/main/jniLibs/arm64-v8a/
 
           # armv7 (armeabi-v7a)
           export CC_armv7_linux_androideabi=$TOOLCHAIN/armv7a-linux-androideabi24-clang
           export AR_armv7_linux_androideabi=$TOOLCHAIN/llvm-ar
           export CARGO_TARGET_ARMV7_LINUX_ANDROIDEABI_LINKER=$TOOLCHAIN/armv7a-linux-androideabi24-clang
-          cargo build --release --target armv7-linux-androideabi -p snolc
-          cp target/armv7-linux-androideabi/release/libsnolc.so android/app/src/main/jniLibs/armeabi-v7a/
+          cargo build --release --target armv7-linux-androideabi $PACKAGES
+          cp target/armv7-linux-androideabi/release/libsnolc*.so android/app/src/main/jniLibs/armeabi-v7a/
 
           echo "Listing bundled JNI libraries for arm64-v8a:"
           ls -la android/app/src/main/jniLibs/arm64-v8a/
