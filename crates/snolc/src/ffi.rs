@@ -160,7 +160,12 @@ pub unsafe extern "C" fn snolc_engine_start(
             0
         }
         Err(e) => {
-            let msg = format!("Engine::run error: {:?}", e);
+            let last = get_last_error();
+            let msg = if last.is_empty() {
+                format!("Engine::run error: {:?}", e)
+            } else {
+                format!("Engine::run error: {:?} ({})", e, last)
+            };
             log_msg(6, &msg);
             set_last_error(&msg);
             -5

@@ -504,10 +504,10 @@ fn prefix_end(prefix: &str) -> Result<String, StorageError> {
 
 fn prepare_path(path: &Path) -> Result<(), StorageError> {
     let directory = path.parent().ok_or(StorageError::Invalid)?;
-    #[cfg(unix)]
+    #[cfg(all(unix, not(target_os = "android")))]
     let existed = directory.exists();
     fs::create_dir_all(directory)?;
-    #[cfg(unix)]
+    #[cfg(all(unix, not(target_os = "android")))]
     {
         use std::os::unix::fs::PermissionsExt;
         if existed {
@@ -537,7 +537,7 @@ impl LockedFileBackend {
             options.mode(0o600);
         }
         let file = options.open(path)?;
-        #[cfg(unix)]
+        #[cfg(all(unix, not(target_os = "android")))]
         {
             use std::os::unix::fs::PermissionsExt;
             if file.metadata()?.permissions().mode() & 0o077 != 0 {

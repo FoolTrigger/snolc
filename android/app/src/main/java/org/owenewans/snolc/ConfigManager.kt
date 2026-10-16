@@ -153,7 +153,8 @@ object ConfigManager {
         )
 
         // 5. Policy Local
-        val storageFile = File(filesDir, "policy-client.redb")
+        val policyDir = File(filesDir, "policy").apply { mkdirs() }
+        val storageFile = File(policyDir, "policy-client.redb")
         val policyToml = File(filesDir, "policy.toml")
         policyToml.writeText(
             """

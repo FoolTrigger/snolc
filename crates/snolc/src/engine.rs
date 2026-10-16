@@ -453,6 +453,10 @@ impl Engine {
                 self.snapshot
                     .lifecycle
                     .store(Lifecycle::Failed as u8, Ordering::Release);
+                self.emit(Event::ModuleError {
+                    instance: module.instance_name().to_owned(),
+                    message: format!("create failed: {:?}", error),
+                });
                 return Err(error.into());
             }
         }
