@@ -245,6 +245,8 @@ struct PolicyDatagramFlow<S, M> {
     mux: DatagramSniff<M>,
     upload: DatagramPump,
     download: DatagramPump,
+    last_activity: Instant,
+    client_finished_at: Option<Instant>,
 }
 
 struct DatagramSniff<M> {
@@ -470,6 +472,7 @@ impl<S: DatagramIo, M: DatagramIo> PolicyDatagramFlow<S, M> {
         credential_digest: Option<String>,
         sniff: Option<SniffPolicy>,
     ) -> Result<Self, PumpError> {
+        let now = Instant::now();
         Ok(Self {
             session,
             user_id,
@@ -478,7 +481,17 @@ impl<S: DatagramIo, M: DatagramIo> PolicyDatagramFlow<S, M> {
             mux: DatagramSniff::new(mux, sniff),
             upload: DatagramPump::new(MAX_UDP_PAYLOAD)?,
             download: DatagramPump::new(MAX_UDP_PAYLOAD)?,
+            last_activity: now,
+            client_finished_at: None,
         })
+    }
+
+    fn is_finished(&self) -> bool {
+        (self.upload.is_finished() && self.download.is_finished())
+            || self
+                .client_finished_at
+                .is_some_and(|t| t.elapsed() >= Duration::from_secs(5))
+            || self.last_activity.elapsed() >= Duration::from_secs(60)
     }
 
     fn poll(
@@ -488,6 +501,7 @@ impl<S: DatagramIo, M: DatagramIo> PolicyDatagramFlow<S, M> {
         max_mux_to_stack: usize,
         max_total: usize,
     ) -> Poll<Result<(DatagramPumpReport, DatagramPumpReport), PumpError>> {
+        let mut progress = false;
         let upload = self.upload.poll(
             context,
             &mut self.stack,
@@ -495,7 +509,12 @@ impl<S: DatagramIo, M: DatagramIo> PolicyDatagramFlow<S, M> {
             max_stack_to_mux.min(max_total),
         );
         let upload = match upload {
-            Poll::Ready(Ok(report)) => report,
+            Poll::Ready(Ok(report)) => {
+                if report.received > 0 || report.sent > 0 {
+                    progress = true;
+                }
+                report
+            }
             Poll::Ready(Err(error)) => return Poll::Ready(Err(error)),
             Poll::Pending => DatagramPumpReport::default(),
         };
@@ -507,10 +526,21 @@ impl<S: DatagramIo, M: DatagramIo> PolicyDatagramFlow<S, M> {
             max_mux_to_stack.min(remaining),
         );
         let download = match download {
-            Poll::Ready(Ok(report)) => report,
+            Poll::Ready(Ok(report)) => {
+                if report.received > 0 || report.sent > 0 {
+                    progress = true;
+                }
+                if report.finished && self.client_finished_at.is_none() {
+                    self.client_finished_at = Some(Instant::now());
+                }
+                report
+            }
             Poll::Ready(Err(error)) => return Poll::Ready(Err(error)),
             Poll::Pending => DatagramPumpReport::default(),
         };
+        if progress {
+            self.last_activity = Instant::now();
+        }
         if upload == DatagramPumpReport::default() && download == DatagramPumpReport::default() {
             Poll::Pending
         } else {
@@ -1148,7 +1178,7 @@ fn poll_instance(instance: u64, _wake: SnolWakeHandle) -> u32 {
                 usize::try_from(grant.combined).unwrap_or(usize::MAX),
             );
             match result {
-                Poll::Ready(Ok((upload, download))) if upload.finished && download.finished => {
+                Poll::Ready(Ok((upload, download))) if flow.is_finished() => {
                     usage.push((*handle, flow.user_id.clone(), grant, upload, download));
                     finished.push(*handle);
                 }
@@ -1165,13 +1195,18 @@ fn poll_instance(instance: u64, _wake: SnolWakeHandle) -> u32 {
                     ));
                     finished.push(*handle);
                 }
-                Poll::Pending => usage.push((
-                    *handle,
-                    flow.user_id.clone(),
-                    grant,
-                    DatagramPumpReport::default(),
-                    DatagramPumpReport::default(),
-                )),
+                Poll::Pending => {
+                    if flow.is_finished() {
+                        finished.push(*handle);
+                    }
+                    usage.push((
+                        *handle,
+                        flow.user_id.clone(),
+                        grant,
+                        DatagramPumpReport::default(),
+                        DatagramPumpReport::default(),
+                    ));
+                }
             }
         }
         for (handle, user_id, grant, upload, download) in usage {

@@ -113,15 +113,8 @@ class SnolcVpnService : VpnService() {
                     .addRoute("0.0.0.0", 0)
                     .addDnsServer("1.1.1.1")
                     .addDnsServer("8.8.8.8")
+                    .addDnsServer("77.88.8.8")
                     .setSession("snolc-stealth")
-
-                try {
-                    builder.addAddress("fd00::2", 64)
-                    builder.addRoute("::", 0)
-                    builder.addDnsServer("2606:4700:4700::1111")
-                } catch (e: Exception) {
-                    Log.w(TAG, "IPv6 not supported: ${e.message}")
-                }
 
                 val pfd = builder.establish() ?: run {
                     val err = "VpnService.Builder.establish() вернул null"

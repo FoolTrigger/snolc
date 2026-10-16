@@ -1128,6 +1128,7 @@ impl TunnelRuntime {
             }
             TunnelState::Established(session) => {
                 if let Err(error) = session.poll(&self.binding, modules, stack, &mut context) {
+                    session.cleanup(modules);
                     return self.fail(error.to_string(), true);
                 }
             }
@@ -1165,6 +1166,15 @@ impl TunnelRuntime {
 }
 
 impl EstablishedSession {
+    fn cleanup(&mut self, modules: &[LoadedModule]) {
+        self.reject_pending(modules);
+        for flow in self.active.drain(..) {
+            if let Some((adapter, adapter_flow)) = flow.adapter_flow {
+                let _ = modules[adapter].adapter_close_flow(adapter_flow);
+            }
+        }
+    }
+
     fn is_idle(&self, role: Role) -> bool {
         if !self.active.is_empty() {
             return false;

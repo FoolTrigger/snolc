@@ -387,11 +387,14 @@ struct DirectDatagramFlow<S> {
     endpoint: UdpIo,
     upload: DatagramPump,
     download: DatagramPump,
+    last_activity: Instant,
+    upload_finished_at: Option<Instant>,
 }
 
 impl<S: DatagramIo> DirectDatagramFlow<S> {
     fn new(stack: S, socket: UdpSocket) -> Result<Self, DirectError> {
         socket.set_nonblocking(true)?;
+        let now = Instant::now();
         Ok(Self {
             stack,
             endpoint: UdpIo {
@@ -401,6 +404,8 @@ impl<S: DatagramIo> DirectDatagramFlow<S> {
             },
             upload: DatagramPump::new(MAX_UDP_PAYLOAD).map_err(|_| DirectError::Resource)?,
             download: DatagramPump::new(MAX_UDP_PAYLOAD).map_err(|_| DirectError::Resource)?,
+            last_activity: now,
+            upload_finished_at: None,
         })
     }
 
@@ -423,13 +428,56 @@ impl<S: DatagramIo> DirectDatagramFlow<S> {
                 MAX_UDP_PAYLOAD,
             )
             .map_err(|error| DirectError::Io(io::Error::other(error.to_string())));
-        match (upload, download) {
-            (Poll::Ready(Ok(upload)), Poll::Ready(Ok(download))) => {
-                Poll::Ready(Ok(upload.finished && download.finished))
+
+        let mut progress = false;
+        let mut upload_done = false;
+
+        match upload {
+            Poll::Ready(Ok(report)) => {
+                if report.received > 0 || report.sent > 0 {
+                    progress = true;
+                }
+                if report.finished {
+                    upload_done = true;
+                    if self.upload_finished_at.is_none() {
+                        self.upload_finished_at = Some(Instant::now());
+                    }
+                }
             }
-            (Poll::Ready(Err(error)), _) | (_, Poll::Ready(Err(error))) => Poll::Ready(Err(error)),
-            _ => Poll::Pending,
+            Poll::Ready(Err(error)) => return Poll::Ready(Err(error)),
+            Poll::Pending => {}
         }
+
+        match download {
+            Poll::Ready(Ok(report)) => {
+                if report.received > 0 || report.sent > 0 {
+                    progress = true;
+                }
+                if report.finished {
+                    return Poll::Ready(Ok(true));
+                }
+            }
+            Poll::Ready(Err(error)) => return Poll::Ready(Err(error)),
+            Poll::Pending => {}
+        }
+
+        if progress {
+            self.last_activity = Instant::now();
+        }
+
+        if upload_done {
+            if let Some(finished_at) = self.upload_finished_at {
+                if finished_at.elapsed() >= Duration::from_secs(5) {
+                    return Poll::Ready(Ok(true));
+                }
+            }
+        }
+
+        if self.last_activity.elapsed() >= Duration::from_secs(60) {
+            return Poll::Ready(Ok(true));
+        }
+
+        Poll::Pending
     }
 }
 
