@@ -210,10 +210,10 @@ object ConfigManager {
 
             [engine]
             max_sessions = 2
-            max_flows = 32
+            max_flows = 256
             max_pending_sessions = 2
-            max_pending_opens = 8
-            max_managed_bytes = 33554432
+            max_pending_opens = 64
+            max_managed_bytes = 134217728
             max_commands = 64
             max_events = 256
             max_io_chunk = 16384
@@ -224,21 +224,21 @@ object ConfigManager {
 
             [stack]
             ipv4 = true
-            ipv6 = true
+            ipv6 = false
             mtu = 1280
             tcp_socket_rx_bytes = 16384
             tcp_socket_tx_bytes = 16384
             udp_socket_rx_bytes = 131072
             udp_socket_tx_bytes = 131072
-            udp_metadata_slots = 8
+            udp_metadata_slots = 32
             packet_queue_bytes = 262144
             max_udp_payload_bytes = 65507
             reassembly_slots = 4
             reassembly_timeout_ms = 15000
 
             [yamux]
-            max_streams_per_session = 17
-            receive_window_bytes = 4456448
+            max_streams_per_session = 128
+            receive_window_bytes = 33554432
             split_send_size = 16384
             read_after_close = true
 

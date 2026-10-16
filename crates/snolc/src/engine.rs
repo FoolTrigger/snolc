@@ -1224,7 +1224,11 @@ impl EstablishedSession {
             if let Poll::Ready((mux, result)) = future.as_mut().poll(context) {
                 self.accepting = None;
                 self.mux = Some(mux);
-                let (request, stream) = result?;
+                let (request, stream) = match result {
+                    Ok(pair) => pair,
+                    Err(MuxError::StreamLimit) => return Ok(()),
+                    Err(error) => return Err(error.into()),
+                };
                 let operation = next_operation()?;
                 self.pending = Some(PendingServerFlow {
                     metadata: OwnedFlowMetadata::from_request(&request),
@@ -1546,11 +1550,25 @@ impl EstablishedSession {
             });
         }
         let pending = self.client_pending.take().ok_or(SessionFlowError::State)?;
-        let future = self
+        let future = match self
             .mux
             .as_mut()
             .ok_or(SessionFlowError::State)?
-            .begin_open_flow_confirmed(pending.request.clone())?;
+            .begin_open_flow_confirmed(pending.request.clone())
+        {
+            Ok(future) => future,
+            Err(MuxError::StreamLimit) => {
+                if let Some((adapter, flow)) = pending.adapter_flow {
+                    let _ = modules[adapter].adapter_complete_flow(
+                        flow,
+                        snolc_abi::STATUS_RESOURCE,
+                        b"stream limit reached",
+                    );
+                }
+                return Ok(());
+            }
+            Err(error) => return Err(error.into()),
+        };
         self.openings.push(ClientOpening { future, pending });
         Ok(())
     }

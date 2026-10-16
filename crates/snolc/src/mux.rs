@@ -212,14 +212,17 @@ where
         if self.role != Mode::Server || !self.policy_open {
             return Err(MuxError::PolicyRequired);
         }
-        self.reserve_user_stream()?;
-        let mut stream = match self.accept_stream().await {
-            Ok(stream) => stream,
-            Err(error) => {
-                self.user_streams -= 1;
-                return Err(error);
-            }
-        };
+        let mut stream = self.accept_stream().await?;
+        if let Err(error) = self.reserve_user_stream() {
+            let response = OpenResponse {
+                status: OpenStatus::ResourceLimit,
+                reason: "yamux user stream limit is exhausted".to_owned(),
+            };
+            let _ = self
+                .drive_operation(write_open_response(&mut stream, &response))
+                .await;
+            return Err(error);
+        }
         let request = match self.drive_operation(read_open(&mut stream)).await {
             Ok(request) => request,
             Err(error) => {
