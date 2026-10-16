@@ -866,7 +866,11 @@ fn connect_addresses(
             _ => return Err(DirectError::InvalidDestination),
         };
         match result {
-            Ok(endpoint) => return Ok(endpoint),
+            Ok(endpoint) => {
+                #[cfg(not(target_os = "android"))]
+                eprintln!("[DIRECT CONNECT] kind={}, addr={:?}", kind, address);
+                return Ok(endpoint);
+            }
             Err(error) => last_error = Some(error),
         }
     }

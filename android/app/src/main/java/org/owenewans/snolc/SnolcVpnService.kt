@@ -115,6 +115,28 @@ class SnolcVpnService : VpnService() {
                     .addDnsServer("8.8.8.8")
                     .addDnsServer("77.88.8.8")
                     .setSession("snolc-stealth")
+                    .setBlocking(false)
+
+                try {
+                    builder.addDisallowedApplication(packageName)
+                } catch (e: Exception) {
+                    Log.w(TAG, "Failed to disallow application: ${e.message}")
+                }
+
+                try {
+                    builder.addAddress("fd00::1", 128)
+                    builder.addRoute("::", 0)
+                } catch (e: Exception) {
+                    Log.w(TAG, "Failed to add IPv6 blackhole route: ${e.message}")
+                }
+
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    try {
+                        setUnderlyingNetworks(null)
+                    } catch (e: Exception) {
+                        Log.w(TAG, "Failed to set underlying networks: ${e.message}")
+                    }
+                }
 
                 val pfd = builder.establish() ?: run {
                     val err = "VpnService.Builder.establish() вернул null"

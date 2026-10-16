@@ -1229,6 +1229,13 @@ impl EstablishedSession {
                     Err(MuxError::StreamLimit) => return Ok(()),
                     Err(error) => return Err(error.into()),
                 };
+                crate::ffi::log_msg(
+                    4,
+                    &format!(
+                        "[SERVER FLOW] kind={:?}, dest={:?}, port={}",
+                        request.kind, request.destination, request.port
+                    ),
+                );
                 let operation = next_operation()?;
                 self.pending = Some(PendingServerFlow {
                     metadata: OwnedFlowMetadata::from_request(&request),
@@ -1424,6 +1431,13 @@ impl EstablishedSession {
                 port: metadata.port,
                 metadata: metadata.opaque,
             };
+            crate::ffi::log_msg(
+                4,
+                &format!(
+                    "[CLIENT TCP FLOW] dest={:?}, port={}",
+                    request.destination, request.port
+                ),
+            );
             self.client_pending = Some(PendingClientFlow {
                 metadata: OwnedFlowMetadata::from_request(&request),
                 request,
@@ -1447,6 +1461,13 @@ impl EstablishedSession {
                 port: metadata.port,
                 metadata: metadata.opaque,
             };
+            crate::ffi::log_msg(
+                4,
+                &format!(
+                    "[CLIENT UDP FLOW] dest={:?}, port={}",
+                    request.destination, request.port
+                ),
+            );
             self.client_pending = Some(PendingClientFlow {
                 metadata: OwnedFlowMetadata::from_request(&request),
                 request,
@@ -1801,20 +1822,24 @@ impl EstablishedSession {
     }
 
     fn reap_closed(&mut self, modules: &[LoadedModule]) {
-        let mut closed = Vec::new();
+        let mut closed_adapters = Vec::new();
+        let mut closed_count = 0usize;
         self.active.retain(|flow| {
             if is_registered(flow.mux_handle) {
                 true
             } else {
                 if let Some(adapter_flow) = flow.adapter_flow {
-                    closed.push(adapter_flow);
+                    closed_adapters.push(adapter_flow);
                 }
+                closed_count += 1;
                 false
             }
         });
         if let Some(mux) = &mut self.mux {
-            for (adapter, flow) in closed {
+            for (adapter, flow) in closed_adapters {
                 let _ = modules[adapter].adapter_close_flow(flow);
+            }
+            for _ in 0..closed_count {
                 mux.release_flow();
             }
         }

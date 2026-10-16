@@ -661,6 +661,12 @@ impl DatagramIo for PacketPort {
             Err(error) => return Poll::Ready(Err(error)),
         };
         let mut bridge = bridge.borrow_mut();
+        if !bridge.config.ipv6 && packet.first().map(|b| b >> 4) == Some(6) {
+            return Poll::Ready(Ok(()));
+        }
+        if !bridge.config.ipv4 && packet.first().map(|b| b >> 4) == Some(4) {
+            return Poll::Ready(Ok(()));
+        }
         let available = bridge.device.byte_limit.saturating_sub(bridge.device.bytes);
         let now_ms = u64::try_from(bridge.started.elapsed().as_millis()).unwrap_or(u64::MAX);
         let packet = match bridge.ipv6_reassembly.ingest(packet, now_ms, available) {
