@@ -14,8 +14,8 @@ use yamux::Mode;
 use crate::config::YamuxConfig;
 use crate::wire::{
     HEADER_LENGTH, MAX_OPEN_BODY, MAX_POLICY_FAMILY, MAX_REASON, OpenRequest, OpenResponse,
-    StreamKind, WireError, encode_open, encode_open_response, encode_policy, parse_header,
-    parse_open, parse_open_response, parse_policy,
+    OpenStatus, StreamKind, WireError, encode_open, encode_open_response, encode_policy,
+    parse_header, parse_open, parse_open_response, parse_policy,
 };
 
 const MUX_HEADER_BYTES: usize = 9;
