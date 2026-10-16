@@ -448,17 +448,22 @@ impl Engine {
     async fn run_loop(mut self) -> Result<(), EngineError> {
         self.emit(Event::Lifecycle(Lifecycle::Starting));
         let host_api = Box::new(self.host_api());
+        let mut failed_module = None;
         for module in &mut self.validated.modules {
             if let Err(error) = module.create(&host_api) {
-                self.snapshot
-                    .lifecycle
-                    .store(Lifecycle::Failed as u8, Ordering::Release);
-                self.emit(Event::ModuleError {
-                    instance: module.instance_name().to_owned(),
-                    message: format!("create failed: {:?}", error),
-                });
-                return Err(error.into());
+                failed_module = Some((module.instance_name().to_owned(), error));
+                break;
             }
+        }
+        if let Some((instance, error)) = failed_module {
+            self.snapshot
+                .lifecycle
+                .store(Lifecycle::Failed as u8, Ordering::Release);
+            self.emit(Event::ModuleError {
+                instance,
+                message: format!("create failed: {:?}", error),
+            });
+            return Err(error.into());
         }
         let stack = SharedStackBridge::new(
             self.validated.config.stack.clone(),
